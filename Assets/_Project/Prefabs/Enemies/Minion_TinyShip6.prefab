@@ -1,0 +1,108 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!1001 &2952865692984272290
+PrefabInstance:
+  m_ObjectHideFlags: 0
+  serializedVersion: 2
+  m_Modification:
+    serializedVersion: 3
+    m_TransformParent: {fileID: 0}
+    m_Modifications:
+    - target: {fileID: 986816037214571295, guid: b5654c55b1f15eb4bac0b2daf0f6781e, type: 3}
+      propertyPath: m_Name
+      value: Minion_TinyShip6
+      objectReference: {fileID: 0}
+    - target: {fileID: 986816037214571295, guid: b5654c55b1f15eb4bac0b2daf0f6781e, type: 3}
+      propertyPath: m_TagString
+      value: Enemy
+      objectReference: {fileID: 0}
+    - target: {fileID: 6393488338427664987, guid: b5654c55b1f15eb4bac0b2daf0f6781e, type: 3}
+      propertyPath: m_LocalScale.x
+      value: 3
+      objectReference: {fileID: 0}
+    - target: {fileID: 6393488338427664987, guid: b5654c55b1f15eb4bac0b2daf0f6781e, type: 3}
+      propertyPath: m_LocalScale.y
+      value: 3
+      objectReference: {fileID: 0}
+    - target: {fileID: 6393488338427664987, guid: b5654c55b1f15eb4bac0b2daf0f6781e, type: 3}
+      propertyPath: m_LocalPosition.x
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 6393488338427664987, guid: b5654c55b1f15eb4bac0b2daf0f6781e, type: 3}
+      propertyPath: m_LocalPosition.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 6393488338427664987, guid: b5654c55b1f15eb4bac0b2daf0f6781e, type: 3}
+      propertyPath: m_LocalPosition.z
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 6393488338427664987, guid: b5654c55b1f15eb4bac0b2daf0f6781e, type: 3}
+      propertyPath: m_LocalRotation.w
+      value: 1
+      objectReference: {fileID: 0}
+    - target: {fileID: 6393488338427664987, guid: b5654c55b1f15eb4bac0b2daf0f6781e, type: 3}
+      propertyPath: m_LocalRotation.x
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 6393488338427664987, guid: b5654c55b1f15eb4bac0b2daf0f6781e, type: 3}
+      propertyPath: m_LocalRotation.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 6393488338427664987, guid: b5654c55b1f15eb4bac0b2daf0f6781e, type: 3}
+      propertyPath: m_LocalRotation.z
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 6393488338427664987, guid: b5654c55b1f15eb4bac0b2daf0f6781e, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.x
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 6393488338427664987, guid: b5654c55b1f15eb4bac0b2daf0f6781e, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 6393488338427664987, guid: b5654c55b1f15eb4bac0b2daf0f6781e, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.z
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 7727764660305793404, guid: b5654c55b1f15eb4bac0b2daf0f6781e, type: 3}
+      propertyPath: m_GravityScale
+      value: 0
+      objectReference: {fileID: 0}
+    m_RemovedComponents: []
+    m_RemovedGameObjects: []
+    m_AddedGameObjects: []
+    m_AddedComponents:
+    - targetCorrespondingSourceObject: {fileID: 986816037214571295, guid: b5654c55b1f15eb4bac0b2daf0f6781e, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 1462190863083746247}
+  m_SourcePrefab: {fileID: 100100000, guid: b5654c55b1f15eb4bac0b2daf0f6781e, type: 3}
+--- !u!1 &2687365052752113341 stripped
+GameObject:
+  m_CorrespondingSourceObject: {fileID: 986816037214571295, guid: b5654c55b1f15eb4bac0b2daf0f6781e, type: 3}
+  m_PrefabInstance: {fileID: 2952865692984272290}
+  m_PrefabAsset: {fileID: 0}
+--- !u!114 &1462190863083746247
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2687365052752113341}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: ffbcbe088d59a9c42b1facc9646cc34e, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::EnemyController
+  enemyType: 0
+  maxHealth: 2
+  moveSpeed: 4.5
+  scoreValue: 100
+  dropRate: 0.5
+  dropItemPrefabs:
+  - {fileID: 4903921887715221715, guid: 86e5dc3819f8f7a44a7dc8844e784a8f, type: 3}
+  - {fileID: 7688540733938426330, guid: 151a480a37bf07c41aceecd87bd5a0b4, type: 3}
+  - {fileID: 3984912482756646218, guid: e0f43071661f83c4ea5a45c6d70e7c5e, type: 3}
+  canShoot: 0
+  fireInterval: 0
+  enemyBulletPrefab: {fileID: 0}
+  firePoint: {fileID: 0}
