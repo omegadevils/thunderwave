@@ -56,14 +56,6 @@ PrefabInstance:
       propertyPath: m_LocalEulerAnglesHint.z
       value: 0
       objectReference: {fileID: 0}
-    - target: {fileID: 6214038594080378173, guid: 38f26c33a29d3f44ea1e2f4111917ff2, type: 3}
-      propertyPath: m_GravityScale
-      value: 0
-      objectReference: {fileID: 0}
-    - target: {fileID: 6214038594080378173, guid: 38f26c33a29d3f44ea1e2f4111917ff2, type: 3}
-      propertyPath: m_UseFullKinematicContacts
-      value: 1
-      objectReference: {fileID: 0}
     - target: {fileID: 8304399108684853093, guid: 38f26c33a29d3f44ea1e2f4111917ff2, type: 3}
       propertyPath: m_Name
       value: Elite_TinyShip16

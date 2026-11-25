@@ -8,14 +8,6 @@ PrefabInstance:
     serializedVersion: 3
     m_TransformParent: {fileID: 0}
     m_Modifications:
-    - target: {fileID: 1831130594934243174, guid: 37f603d66e1d8364b95c962024ed619e, type: 3}
-      propertyPath: m_GravityScale
-      value: 0
-      objectReference: {fileID: 0}
-    - target: {fileID: 1831130594934243174, guid: 37f603d66e1d8364b95c962024ed619e, type: 3}
-      propertyPath: m_UseFullKinematicContacts
-      value: 1
-      objectReference: {fileID: 0}
     - target: {fileID: 4526433668419126445, guid: 37f603d66e1d8364b95c962024ed619e, type: 3}
       propertyPath: m_LocalScale.x
       value: 3

@@ -16,14 +16,6 @@ PrefabInstance:
       propertyPath: m_TagString
       value: Enemy
       objectReference: {fileID: 0}
-    - target: {fileID: 3419112190436553696, guid: f7db1ca93afe219479a997ea021d2ef2, type: 3}
-      propertyPath: m_GravityScale
-      value: 0
-      objectReference: {fileID: 0}
-    - target: {fileID: 3419112190436553696, guid: f7db1ca93afe219479a997ea021d2ef2, type: 3}
-      propertyPath: m_UseFullKinematicContacts
-      value: 1
-      objectReference: {fileID: 0}
     - target: {fileID: 3926463140242623816, guid: f7db1ca93afe219479a997ea021d2ef2, type: 3}
       propertyPath: m_LocalScale.x
       value: 4.5
