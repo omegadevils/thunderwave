@@ -57,6 +57,8 @@ public class EnemyController : MonoBehaviour
     private int patrolDirection = 1; // Boss 左右巡邏方向
     private Camera mainCamera;
     private SpriteRenderer[] spriteRenderers;
+    private PlayerController cachedPlayer;
+    private float nextCollisionTime = 0f;
 
     public EnemyType Type => enemyType;
 
@@ -73,11 +75,18 @@ public class EnemyController : MonoBehaviour
             rb = gameObject.AddComponent<Rigidbody2D>();
         }
         rb.gravityScale = 0f;
-        rb.isKinematic = true;
+        rb.bodyType = RigidbodyType2D.Kinematic;
+        rb.useFullKinematicContacts = true;
     }
 
     private void Start()
     {
+        cachedPlayer = FindAnyObjectByType<PlayerController>();
+        if (GameManager.Instance != null && GameManager.Instance.EnemyHealthMultiplier > 1f)
+        {
+            maxHealth = Mathf.CeilToInt(maxHealth * GameManager.Instance.EnemyHealthMultiplier);
+            currentHealth = maxHealth;
+        }
         nextFireTime = Time.time + Random.Range(0.5f, fireInterval);
     }
 
@@ -95,7 +104,28 @@ public class EnemyController : MonoBehaviour
     {
         HandleMovement();
         HandleShooting();
+        CheckPlayerOverlap();
         CheckOutOfBounds();
+    }
+
+    private void CheckPlayerOverlap()
+    {
+        if (cachedPlayer == null || Time.time < nextCollisionTime) return;
+
+        float hitRadius = enemyType == EnemyType.Boss ? 1.5f : 0.7f;
+        if (Vector2.Distance(transform.position, cachedPlayer.transform.position) <= hitRadius)
+        {
+            nextCollisionTime = Time.time + 0.5f;
+            cachedPlayer.TakeDamage(1, enemyType);
+            if (enemyType == EnemyType.Minion)
+            {
+                Die();
+            }
+            else
+            {
+                TakeDamage(5);
+            }
+        }
     }
 
     /// <summary>
@@ -103,34 +133,59 @@ public class EnemyController : MonoBehaviour
     /// </summary>
     private void HandleMovement()
     {
+        bool isHorizontal = GameManager.Instance != null && GameManager.Instance.IsHorizontalStage;
+        Vector3 forwardMove = isHorizontal ? Vector3.left : Vector3.down;
+
         switch (enemyType)
         {
             case EnemyType.Minion:
-                // 小怪：直線向下快速俯衝
-                transform.Translate(Vector3.down * (moveSpeed * Time.deltaTime), Space.World);
-                break;
-
-            case EnemyType.Elite:
-                // 精英怪：緩速向下推進
-                transform.Translate(Vector3.down * (moveSpeed * Time.deltaTime), Space.World);
-                break;
-
-            case EnemyType.Boss:
-                // Boss：進場移動到上方定位後，開始左右平移巡邏
-                if (transform.position.y > 3.2f)
+                if (cachedPlayer != null)
                 {
-                    transform.Translate(Vector3.down * (moveSpeed * Time.deltaTime), Space.World);
+                    Vector3 chaseDir = (cachedPlayer.transform.position - transform.position).normalized;
+                    transform.Translate(chaseDir * (moveSpeed * Time.deltaTime), Space.World);
                 }
                 else
                 {
-                    transform.Translate(Vector3.right * (patrolDirection * moveSpeed * Time.deltaTime), Space.World);
-                    if (transform.position.x > 2.8f)
+                    transform.Translate(forwardMove * (moveSpeed * Time.deltaTime), Space.World);
+                }
+                break;
+
+            case EnemyType.Elite:
+                transform.Translate(forwardMove * (moveSpeed * Time.deltaTime), Space.World);
+                break;
+
+            case EnemyType.Boss:
+                if (isHorizontal)
+                {
+                    if (transform.position.x > 3.2f)
                     {
-                        patrolDirection = -1;
+                        transform.Translate(Vector3.left * (moveSpeed * Time.deltaTime), Space.World);
                     }
-                    else if (transform.position.x < -2.8f)
+                    else
                     {
-                        patrolDirection = 1;
+                        transform.Translate(Vector3.up * (patrolDirection * moveSpeed * Time.deltaTime), Space.World);
+                        if (transform.position.y > 2.8f) patrolDirection = -1;
+                        else if (transform.position.y < -2.8f) patrolDirection = 1;
+                    }
+                }
+                else
+                {
+                    // Boss：進場移動到上方定位後，開始左右平移巡邏
+                    if (transform.position.y > 3.2f)
+                    {
+                        transform.Translate(Vector3.down * (moveSpeed * Time.deltaTime), Space.World);
+                    }
+                    else
+                    {
+                        transform.Translate(Vector3.right * (patrolDirection * moveSpeed * Time.deltaTime), Space.World);
+                        if (transform.position.x > 2.8f)
+                        {
+                            patrolDirection = -1;
+                        }
+                        else if (transform.position.x < -2.8f)
+                        {
+                            patrolDirection = 1;
+                        }
                     }
                 }
                 break;
@@ -146,22 +201,53 @@ public class EnemyController : MonoBehaviour
 
         if (Time.time >= nextFireTime)
         {
-            nextFireTime = Time.time + fireInterval;
-            Vector3 spawnPos = firePoint != null ? firePoint.position : transform.position + Vector3.down * 0.8f;
+            nextFireTime = Time.time + (enemyType == EnemyType.Elite ? fireInterval * 0.55f : fireInterval);
+            bool isHorizontal = GameManager.Instance != null && GameManager.Instance.IsHorizontalStage;
+            Vector2 baseDir = isHorizontal ? Vector2.left : Vector2.down;
+            Vector3 spawnPos = firePoint != null ? firePoint.position : transform.position + (Vector3)baseDir * 0.8f;
 
             if (enemyType == EnemyType.Elite)
             {
-                // 精英怪：定時向下發射直線單發
-                SpawnBullet(spawnPos, Vector2.down, 1, 6f);
+                // 精英怪：高頻率、較快且更密集的 3 向彈幕
+                float[] eliteAngles = { -12f, 0f, 12f };
+                foreach (float angle in eliteAngles)
+                {
+                    Vector2 dir = Quaternion.Euler(0, 0, angle) * baseDir;
+                    SpawnBullet(spawnPos, dir, 1, 8.5f);
+                }
             }
             else if (enemyType == EnemyType.Boss)
             {
-                // Boss：定時發射 5 向扇形彈幕
-                float[] angles = { -30f, -15f, 0f, 15f, 30f };
-                foreach (float angle in angles)
+                int pattern = Random.Range(0, 3);
+                if (pattern == 0)
                 {
-                    Vector2 dir = Quaternion.Euler(0, 0, angle) * Vector2.down;
-                    SpawnBullet(spawnPos, dir, 1, 5f);
+                    // 模式一：9 向密集扇形彈幕
+                    for (int a = -40; a <= 40; a += 10)
+                    {
+                        Vector2 dir = Quaternion.Euler(0, 0, a) * baseDir;
+                        SpawnBullet(spawnPos, dir, 1, 5.5f);
+                    }
+                }
+                else if (pattern == 1 && cachedPlayer != null)
+                {
+                    // 模式二：鎖定玩家方向的 5 向高速狙擊彈
+                    Vector2 aimDir = (cachedPlayer.transform.position - spawnPos).normalized;
+                    float[] aimAngles = { -12f, -6f, 0f, 6f, 12f };
+                    foreach (float angle in aimAngles)
+                    {
+                        Vector2 dir = Quaternion.Euler(0, 0, angle) * aimDir;
+                        SpawnBullet(spawnPos, dir, 1, 7.5f);
+                    }
+                }
+                else
+                {
+                    // 模式三：20 向 360 度密集環形彈幕
+                    for (int i = 0; i < 20; i++)
+                    {
+                        float angle = i * 18f;
+                        Vector2 dir = Quaternion.Euler(0, 0, angle) * baseDir;
+                        SpawnBullet(spawnPos, dir, 1, 4.5f);
+                    }
                 }
             }
         }
@@ -174,6 +260,7 @@ public class EnemyController : MonoBehaviour
         if (proj != null)
         {
             proj.Initialize(Projectile.Faction.Enemy, damage, speed, dir, false);
+            proj.SetSourceEnemyType(enemyType);
         }
     }
 
@@ -182,6 +269,13 @@ public class EnemyController : MonoBehaviour
     /// </summary>
     public void TakeDamage(int damage)
     {
+        if (enemyType == EnemyType.Boss)
+        {
+            bool isHorizontal = GameManager.Instance != null && GameManager.Instance.IsHorizontalStage;
+            bool isInsideBounds = isHorizontal ? transform.position.x <= 3.2f : transform.position.y <= 3.2f;
+            if (!isInsideBounds) return;
+        }
+
         currentHealth -= damage;
         StartCoroutine(FlashWhiteRoutine());
 
@@ -232,6 +326,14 @@ public class EnemyController : MonoBehaviour
             GameManager.Instance.AddScore(scoreValue);
             if (enemyType == EnemyType.Boss)
             {
+                SpawnBossDefeatEffect(transform.position);
+                foreach (var enemy in FindObjectsByType<EnemyController>(FindObjectsSortMode.None))
+                {
+                    if (enemy != null && enemy != this && enemy.Type != EnemyType.Boss)
+                    {
+                        Destroy(enemy.gameObject);
+                    }
+                }
                 GameManager.Instance.OnBossKilled();
             }
         }
@@ -267,8 +369,21 @@ public class EnemyController : MonoBehaviour
         float roll = Random.value;
         if (enemyType == EnemyType.Boss || roll <= dropRate)
         {
-            int index = Random.Range(0, dropItemPrefabs.Length);
-            GameObject itemPrefab = dropItemPrefabs[index];
+            bool blockHeal = GameManager.Instance != null && GameManager.Instance.SelectedSkill == SkillType.GlassCannon;
+            System.Collections.Generic.List<GameObject> candidates = new System.Collections.Generic.List<GameObject>();
+            foreach (var prefab in dropItemPrefabs)
+            {
+                if (prefab == null) continue;
+                if (blockHeal)
+                {
+                    ItemPickup pickup = prefab.GetComponent<ItemPickup>();
+                    if (pickup != null && pickup.Type == ItemType.Heal) continue;
+                }
+                candidates.Add(prefab);
+            }
+
+            if (candidates.Count == 0) return;
+            GameObject itemPrefab = candidates[Random.Range(0, candidates.Count)];
             if (itemPrefab != null)
             {
                 Instantiate(itemPrefab, transform.position, Quaternion.identity);
@@ -280,14 +395,36 @@ public class EnemyController : MonoBehaviour
     public static GameObject[] CachedDropItems;
 
     /// <summary>
-    /// 超出螢幕下方邊界時自動銷毀
+    /// 超出邊界時自動銷毀 (第二關橫式不超出左邊界)
     /// </summary>
     private void CheckOutOfBounds()
     {
-        if (enemyType != EnemyType.Boss && transform.position.y < -7f)
+        if (enemyType == EnemyType.Boss) return;
+
+        bool isHorizontal = GameManager.Instance != null && GameManager.Instance.IsHorizontalStage;
+        if (isHorizontal)
+        {
+            float halfW = BackgroundScroller.Instance != null ? BackgroundScroller.Instance.GetBackgroundHalfWidth() : 8.0f;
+            if (transform.position.x <= -halfW)
+            {
+                Destroy(gameObject);
+            }
+        }
+        else if (transform.position.y < -7f)
         {
             Destroy(gameObject);
         }
+    }
+
+    /// <summary>
+    /// 生成 Boss 擊敗爆破衝擊波特效 (兩關通用)
+    /// </summary>
+    private void SpawnBossDefeatEffect(Vector3 center)
+    {
+        GameObject fxObj = new GameObject("BossDefeatFX");
+        fxObj.transform.position = center;
+        BossDefeatFX fx = fxObj.AddComponent<BossDefeatFX>();
+        fx.Play();
     }
 
     private void OnTriggerEnter2D(Collider2D other)
@@ -305,6 +442,22 @@ public class EnemyController : MonoBehaviour
         {
             TakeDamage(1);
         }
+        else
+        {
+            PlayerController player = other.GetComponent<PlayerController>() ?? other.GetComponentInParent<PlayerController>();
+            if (player != null)
+            {
+                player.TakeDamage(1, enemyType);
+                if (enemyType == EnemyType.Minion)
+                {
+                    Die();
+                }
+                else
+                {
+                    TakeDamage(5);
+                }
+            }
+        }
     }
 
     private static bool SafeCheckTag(Component comp, string tag)
@@ -317,5 +470,78 @@ public class EnemyController : MonoBehaviour
         {
             return false;
         }
+    }
+}
+
+/// <summary>
+/// Boss 擊敗時的擴散爆破衝擊波特效 (支援慢動作結算)
+/// </summary>
+public class BossDefeatFX : MonoBehaviour
+{
+    public void Play()
+    {
+        StartCoroutine(PlayRoutine());
+    }
+
+    private System.Collections.IEnumerator PlayRoutine()
+    {
+        int ringCount = 3;
+        LineRenderer[] rings = new LineRenderer[ringCount];
+        Color[] colors = new Color[]
+        {
+            new Color(1f, 0.9f, 0.3f, 1f),
+            new Color(1f, 0.4f, 0.1f, 1f),
+            new Color(1f, 0.15f, 0.2f, 1f)
+        };
+
+        Material mat = new Material(Shader.Find("Sprites/Default"));
+        int segments = 48;
+
+        for (int r = 0; r < ringCount; r++)
+        {
+            GameObject ringObj = new GameObject($"Ring_{r}");
+            ringObj.transform.SetParent(transform, false);
+            LineRenderer lr = ringObj.AddComponent<LineRenderer>();
+            lr.useWorldSpace = false;
+            lr.loop = true;
+            lr.positionCount = segments;
+            lr.material = mat;
+            lr.sortingOrder = 25;
+            rings[r] = lr;
+        }
+
+        float duration = 1.2f;
+        float elapsed = 0f;
+
+        while (elapsed < duration)
+        {
+            elapsed += Time.unscaledDeltaTime;
+
+            for (int r = 0; r < ringCount; r++)
+            {
+                float delay = r * 0.15f;
+                float rt = Mathf.Clamp01((elapsed - delay) / (duration - delay));
+                float radius = Mathf.Lerp(0.3f, 5.5f + r * 1.5f, rt);
+                float alpha = 1f - rt;
+
+                LineRenderer lr = rings[r];
+                Color c = colors[r];
+                c.a = alpha;
+                lr.startColor = c;
+                lr.endColor = c;
+                lr.startWidth = 0.25f * (1f - rt * 0.7f);
+                lr.endWidth = lr.startWidth;
+
+                for (int i = 0; i < segments; i++)
+                {
+                    float angle = (i / (float)segments) * Mathf.PI * 2f;
+                    lr.SetPosition(i, new Vector3(Mathf.Cos(angle) * radius, Mathf.Sin(angle) * radius, 0f));
+                }
+            }
+
+            yield return null;
+        }
+
+        Destroy(gameObject);
     }
 }

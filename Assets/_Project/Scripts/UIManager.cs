@@ -11,6 +11,8 @@ public class UIManager : MonoBehaviour
 
     [Header("4 大核心面板")]
     [SerializeField] private GameObject startPanel;
+    [SerializeField] private GameObject storyPanel;
+    [SerializeField] private GameObject skillSelectPanel;
     [SerializeField] private GameObject hudPanel;
     [SerializeField] private GameObject pausePanel;
     [SerializeField] private GameObject endPanel;
@@ -39,6 +41,7 @@ public class UIManager : MonoBehaviour
     [SerializeField] private Button startButton;
 
     private PlayerController player;
+    private Image lowHpOverlay;
 
     private void Awake()
     {
@@ -54,7 +57,7 @@ public class UIManager : MonoBehaviour
 
     private void Start()
     {
-        player = FindFirstObjectByType<PlayerController>();
+        player = FindAnyObjectByType<PlayerController>();
 
         UpdateSoundButtonText(AudioManager.Instance != null && AudioManager.Instance.IsSoundEnabled);
     }
@@ -64,6 +67,7 @@ public class UIManager : MonoBehaviour
         GameManager.OnGameStateChanged += HandleGameStateChanged;
         GameManager.OnScoreChanged += UpdateScore;
         GameManager.OnStageChanged += UpdateStage;
+        GameManager.OnBossSpawnRequested += ShowBossWarning;
         PlayerController.OnHealthChanged += UpdateHealth;
         AudioManager.OnSoundToggled += UpdateSoundButtonText;
     }
@@ -73,6 +77,7 @@ public class UIManager : MonoBehaviour
         GameManager.OnGameStateChanged -= HandleGameStateChanged;
         GameManager.OnScoreChanged -= UpdateScore;
         GameManager.OnStageChanged -= UpdateStage;
+        GameManager.OnBossSpawnRequested -= ShowBossWarning;
         PlayerController.OnHealthChanged -= UpdateHealth;
         AudioManager.OnSoundToggled -= UpdateSoundButtonText;
     }
@@ -84,7 +89,50 @@ public class UIManager : MonoBehaviour
         {
             if (chargeSlider != null) chargeSlider.value = player.ChargeProgress;
             if (weaponText != null) weaponText.text = $"WEAPON: {player.CurrentWeapon} Lv.{player.WeaponLevel}";
-            if (bombText != null) bombText.text = $"BOMB: {player.BombCount}/3 (C)";
+            if (bombText != null)
+            {
+                if (player.BombCount <= 0)
+                    bombText.text = "BOMB: 0/3 (已耗盡)";
+                else if (player.BombCooldownRemaining > 0f)
+                    bombText.text = $"BOMB: {player.BombCount}/3 (冷卻 {player.BombCooldownRemaining:F1}s)";
+                else
+                    bombText.text = $"BOMB: {player.BombCount}/3 (C - 就緒!)";
+            }
+        }
+
+        UpdateLowHpFlash();
+    }
+
+    private void UpdateLowHpFlash()
+    {
+        if (lowHpOverlay == null)
+        {
+            Transform parentCanvas = hudPanel != null ? hudPanel.transform.parent : transform;
+            GameObject obj = new GameObject("LowHpOverlay", typeof(RectTransform), typeof(Image));
+            obj.transform.SetParent(parentCanvas, false);
+            RectTransform rect = obj.GetComponent<RectTransform>();
+            rect.anchorMin = Vector2.zero;
+            rect.anchorMax = Vector2.one;
+            rect.offsetMin = Vector2.zero;
+            rect.offsetMax = Vector2.zero;
+            lowHpOverlay = obj.GetComponent<Image>();
+            lowHpOverlay.raycastTarget = false;
+            lowHpOverlay.color = new Color(1f, 0f, 0f, 0f);
+        }
+
+        bool isLowHp = GameManager.Instance != null
+            && GameManager.Instance.CurrentState == GameState.Playing
+            && player != null
+            && player.CurrentHealth == 1;
+
+        if (isLowHp)
+        {
+            float alpha = Mathf.PingPong(Time.time * 1.2f, 0.12f) + 0.02f;
+            lowHpOverlay.color = new Color(1f, 0f, 0f, alpha);
+        }
+        else
+        {
+            lowHpOverlay.color = new Color(1f, 0f, 0f, 0f);
         }
     }
 
@@ -100,7 +148,18 @@ public class UIManager : MonoBehaviour
 
     private void HandleGameStateChanged(GameState state)
     {
+        if (state == GameState.Story && storyPanel == null)
+        {
+            CreateStoryPanel();
+        }
+        if (state == GameState.SkillSelect && skillSelectPanel == null)
+        {
+            CreateSkillSelectPanel();
+        }
+
         if (startPanel != null) startPanel.SetActive(state == GameState.StartMenu);
+        if (storyPanel != null) storyPanel.SetActive(state == GameState.Story);
+        if (skillSelectPanel != null) skillSelectPanel.SetActive(state == GameState.SkillSelect);
         if (hudPanel != null) hudPanel.SetActive(state == GameState.Playing);
         if (pausePanel != null) pausePanel.SetActive(state == GameState.Paused);
 
@@ -150,5 +209,138 @@ public class UIManager : MonoBehaviour
         {
             soundToggleText.text = enabled ? "SOUND: ON" : "SOUND: OFF";
         }
+    }
+
+    private void CreateStoryPanel()
+    {
+        Transform parentCanvas = startPanel != null ? startPanel.transform.parent : transform;
+        storyPanel = new GameObject("StoryPanel", typeof(RectTransform), typeof(StoryController));
+        storyPanel.transform.SetParent(parentCanvas, false);
+
+        RectTransform rect = storyPanel.GetComponent<RectTransform>();
+        rect.anchorMin = Vector2.zero;
+        rect.anchorMax = Vector2.one;
+        rect.offsetMin = Vector2.zero;
+        rect.offsetMax = Vector2.zero;
+    }
+
+    private void ShowBossWarning()
+    {
+        StartCoroutine(BossWarningRoutine());
+    }
+
+    private System.Collections.IEnumerator BossWarningRoutine()
+    {
+        Transform parentCanvas = hudPanel != null ? hudPanel.transform.parent : transform;
+        GameObject warningObj = new GameObject("BossWarningBanner", typeof(RectTransform), typeof(Image));
+        warningObj.transform.SetParent(parentCanvas, false);
+
+        RectTransform rect = warningObj.GetComponent<RectTransform>();
+        rect.anchorMin = new Vector2(0f, 0.42f);
+        rect.anchorMax = new Vector2(1f, 0.58f);
+        rect.offsetMin = Vector2.zero;
+        rect.offsetMax = Vector2.zero;
+
+        Image bg = warningObj.GetComponent<Image>();
+        bg.raycastTarget = false;
+
+        GameObject textObj = new GameObject("WarningText", typeof(RectTransform), typeof(Text));
+        textObj.transform.SetParent(warningObj.transform, false);
+        RectTransform textRect = textObj.GetComponent<RectTransform>();
+        textRect.anchorMin = Vector2.zero;
+        textRect.anchorMax = Vector2.one;
+        textRect.offsetMin = Vector2.zero;
+        textRect.offsetMax = Vector2.zero;
+
+        Text warningText = textObj.GetComponent<Text>();
+        Font uiFont = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+        if (uiFont == null) uiFont = Resources.GetBuiltinResource<Font>("Arial.ttf");
+        warningText.font = uiFont;
+        warningText.text = "⚠ WARNING // 偵測到巨大敵方旗艦反應 ⚠";
+        warningText.fontSize = 32;
+        warningText.fontStyle = FontStyle.Bold;
+        warningText.alignment = TextAnchor.MiddleCenter;
+        warningText.raycastTarget = false;
+
+        float elapsed = 0f;
+        float duration = 2.5f;
+        while (elapsed < duration)
+        {
+            elapsed += Time.deltaTime;
+            float pulse = Mathf.PingPong(elapsed * 5f, 1f);
+            bg.color = new Color(0.6f, 0f, 0f, 0.25f + pulse * 0.45f);
+            warningText.color = Color.Lerp(new Color(1f, 0.2f, 0.2f, 1f), new Color(1f, 0.9f, 0.2f, 1f), pulse);
+            yield return null;
+        }
+
+        Destroy(warningObj);
+    }
+
+    private void CreateSkillSelectPanel()
+    {
+        Transform parentCanvas = startPanel != null ? startPanel.transform.parent : transform;
+        skillSelectPanel = new GameObject("SkillSelectPanel", typeof(RectTransform), typeof(Image));
+        skillSelectPanel.transform.SetParent(parentCanvas, false);
+
+        RectTransform panelRect = skillSelectPanel.GetComponent<RectTransform>();
+        panelRect.anchorMin = Vector2.zero;
+        panelRect.anchorMax = Vector2.one;
+        panelRect.offsetMin = Vector2.zero;
+        panelRect.offsetMax = Vector2.zero;
+        skillSelectPanel.GetComponent<Image>().color = new Color(0.03f, 0.06f, 0.14f, 0.92f);
+
+        Font uiFont = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+        if (uiFont == null) uiFont = Resources.GetBuiltinResource<Font>("Arial.ttf");
+
+        GameObject titleObj = new GameObject("SkillTitle", typeof(RectTransform), typeof(Text));
+        titleObj.transform.SetParent(skillSelectPanel.transform, false);
+        RectTransform titleRect = titleObj.GetComponent<RectTransform>();
+        titleRect.anchorMin = new Vector2(0.1f, 0.76f);
+        titleRect.anchorMax = new Vector2(0.9f, 0.88f);
+        titleRect.offsetMin = Vector2.zero;
+        titleRect.offsetMax = Vector2.zero;
+        Text titleText = titleObj.GetComponent<Text>();
+        titleText.font = uiFont;
+        titleText.text = "第二關戰術強化 // 請選擇一項技能";
+        titleText.fontSize = 34;
+        titleText.fontStyle = FontStyle.Bold;
+        titleText.alignment = TextAnchor.MiddleCenter;
+        titleText.color = new Color(0.3f, 0.9f, 1f, 1f);
+
+        CreateSkillCard(skillSelectPanel.transform, uiFont, 0, "【輔助戰機】", "旁邊多出 2 台輔助戰機\n協助低傷害射擊\n每台可幫忙抵擋 1 次攻擊", new Color(0.12f, 0.25f, 0.42f, 0.95f), () => GameManager.Instance.SelectSkill(SkillType.Wingmen));
+        CreateSkillCard(skillSelectPanel.transform, uiFont, 1, "【自動蓄力】", "蓄力攻擊自動蓄能\n蓄滿後自動施放\n強力貫穿雷射", new Color(0.18f, 0.28f, 0.18f, 0.95f), () => GameManager.Instance.SelectSkill(SkillType.AutoCharge));
+        CreateSkillCard(skillSelectPanel.transform, uiFont, 2, "【背水一戰】", "玩家血量變為只剩 1 滴\n但所有武器與雷射\n傷害提升為 3 倍！", new Color(0.38f, 0.14f, 0.18f, 0.95f), () => GameManager.Instance.SelectSkill(SkillType.GlassCannon));
+    }
+
+    private void CreateSkillCard(Transform parent, Font font, int index, string title, string desc, Color bgColor, UnityEngine.Events.UnityAction onClick)
+    {
+        float minX = 0.08f + index * 0.29f;
+        float maxX = minX + 0.26f;
+
+        GameObject cardObj = new GameObject($"SkillCard_{index}", typeof(RectTransform), typeof(Image), typeof(Button));
+        cardObj.transform.SetParent(parent, false);
+        RectTransform rect = cardObj.GetComponent<RectTransform>();
+        rect.anchorMin = new Vector2(minX, 0.22f);
+        rect.anchorMax = new Vector2(maxX, 0.70f);
+        rect.offsetMin = Vector2.zero;
+        rect.offsetMax = Vector2.zero;
+
+        cardObj.GetComponent<Image>().color = bgColor;
+        cardObj.GetComponent<Button>().onClick.AddListener(onClick);
+
+        GameObject textObj = new GameObject("Label", typeof(RectTransform), typeof(Text));
+        textObj.transform.SetParent(cardObj.transform, false);
+        RectTransform textRect = textObj.GetComponent<RectTransform>();
+        textRect.anchorMin = new Vector2(0.08f, 0.08f);
+        textRect.anchorMax = new Vector2(0.92f, 0.92f);
+        textRect.offsetMin = Vector2.zero;
+        textRect.offsetMax = Vector2.zero;
+
+        Text label = textObj.GetComponent<Text>();
+        label.font = font;
+        label.text = $"{title}\n\n{desc}";
+        label.fontSize = 22;
+        label.alignment = TextAnchor.MiddleCenter;
+        label.color = Color.white;
     }
 }

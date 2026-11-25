@@ -70,6 +70,15 @@ public class Projectile : MonoBehaviour
     {
         // 沿指定方向直線飛行
         transform.Translate(direction * (speed * Time.deltaTime), Space.World);
+
+        if (GameManager.Instance != null && GameManager.Instance.IsHorizontalStage)
+        {
+            float halfW = BackgroundScroller.Instance != null ? BackgroundScroller.Instance.GetBackgroundHalfWidth() : 8.0f;
+            if (transform.position.x > halfW || transform.position.x < -halfW)
+            {
+                Destroy(gameObject);
+            }
+        }
     }
 
     /// <summary>
@@ -109,6 +118,13 @@ public class Projectile : MonoBehaviour
                 Destroy(gameObject);
             }
         }
+    }
+
+    public EnemyType SourceEnemyType { get; private set; } = EnemyType.Minion;
+
+    public void SetSourceEnemyType(EnemyType type)
+    {
+        SourceEnemyType = type;
     }
 
     private static bool SafeCheckTag(Component comp, string tag)

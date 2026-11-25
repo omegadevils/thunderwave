@@ -41,7 +41,7 @@ public class BoundaryVisualizer : MonoBehaviour
         mainCamera = Camera.main;
         if (mainCamera == null)
         {
-            mainCamera = FindFirstObjectByType<Camera>();
+            mainCamera = FindAnyObjectByType<Camera>();
         }
     }
 
@@ -63,8 +63,10 @@ public class BoundaryVisualizer : MonoBehaviour
         if (mainCamera == null || lineRenderer == null) return;
 
         float verticalHeight = mainCamera.orthographic ? mainCamera.orthographicSize : 6.5f;
-        // 固定以直式 9:16 計算寬度，而非依賴寬螢幕的 aspect
-        float horizontalWidth = verticalHeight * targetAspectRatio;
+        bool isHorizontal = GameManager.Instance != null && GameManager.Instance.IsHorizontalStage;
+        float horizontalWidth = (isHorizontal && BackgroundScroller.Instance != null)
+            ? BackgroundScroller.Instance.GetBackgroundHalfWidth()
+            : verticalHeight * targetAspectRatio;
         Vector3 camPos = mainCamera.transform.position;
 
         float left = camPos.x - horizontalWidth;

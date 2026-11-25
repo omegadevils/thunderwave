@@ -8,10 +8,20 @@ using UnityEngine.SceneManagement;
 public enum GameState
 {
     StartMenu,
+    Story,
+    SkillSelect,
     Playing,
     Paused,
     GameOver,
     Victory
+}
+
+public enum SkillType
+{
+    None,
+    Wingmen,     // 雙翼輔助戰機
+    AutoCharge,  // 自動蓄力雷射
+    GlassCannon  // 血量剩1、傷害3倍
 }
 
 /// <summary>
@@ -33,7 +43,7 @@ public class GameManager : MonoBehaviour
     [SerializeField] private int currentScore = 0;
 
     [Tooltip("生成 Boss 所需門檻分數")]
-    [SerializeField] private int bossSpawnThreshold = 6000;
+    [SerializeField] private int bossSpawnThreshold = 10000;
 
     [Header("炸彈設定")]
     [Tooltip("全屏炸彈對 Boss 等強大目標造成的固定傷害")]
@@ -53,6 +63,11 @@ public class GameManager : MonoBehaviour
     public int CurrentScore => currentScore;
     public int CurrentStage => currentStage;
     public int BossSpawnThreshold => bossSpawnThreshold;
+    public bool IsHorizontalStage => currentStage >= 2;
+    public float EnemyHealthMultiplier => currentStage >= 2 ? 1.5f : 1.0f;
+    public EnemyType LastAttackerType { get; private set; } = EnemyType.Minion;
+    public bool IsDefeatStory { get; private set; } = false;
+    public SkillType SelectedSkill { get; private set; } = SkillType.None;
 
     private void Awake()
     {
@@ -62,6 +77,13 @@ public class GameManager : MonoBehaviour
             return;
         }
         Instance = this;
+
+        int playerLayer = LayerMask.NameToLayer("Player");
+        int enemyLayer = LayerMask.NameToLayer("Enemy");
+        if (playerLayer >= 0 && enemyLayer >= 0)
+        {
+            Physics2D.IgnoreLayerCollision(playerLayer, enemyLayer, false);
+        }
     }
 
     private void Start()
@@ -100,6 +122,8 @@ public class GameManager : MonoBehaviour
         switch (currentState)
         {
             case GameState.StartMenu:
+            case GameState.Story:
+            case GameState.SkillSelect:
             case GameState.Paused:
                 Time.timeScale = 0f;
                 break;
@@ -118,17 +142,55 @@ public class GameManager : MonoBehaviour
     }
 
     /// <summary>
-    /// 開始遊戲 (由 Start Panel 按鈕觸發)
+    /// 開始遊戲 (由 Start Panel 按鈕觸發，先進入開頭劇情)
     /// </summary>
     public void StartGame()
     {
         currentScore = 0;
         bossSpawned = false;
         bossDefeated = false;
-        SetState(GameState.Playing);
+        IsDefeatStory = false;
+        SetState(GameState.Story);
         OnScoreChanged?.Invoke(currentScore);
         OnStageChanged?.Invoke(currentStage);
-        Debug.Log("<color=#00FF88>【遊戲開始】戰鬥開始，敵機開始出動！</color>");
+        Debug.Log("<color=#00CCFF>【劇情演出】播放開頭劇情...</color>");
+    }
+
+    /// <summary>
+    /// 劇情播放完畢或略過後，進入正式關卡或戰敗結算
+    /// </summary>
+    public void FinishStory()
+    {
+        if (currentState != GameState.Story) return;
+
+        if (IsDefeatStory)
+        {
+            IsDefeatStory = false;
+            SetState(GameState.GameOver);
+            Debug.Log("<color=#FF3333>【戰敗結算】進入 Game Over 畫面。</color>");
+        }
+        else if (currentStage >= 2)
+        {
+            SetState(GameState.SkillSelect);
+            Debug.Log("<color=#00CCFF>【技能選擇】請選擇第二關強化技能！</color>");
+        }
+        else
+        {
+            SetState(GameState.Playing);
+            Debug.Log("<color=#00FF88>【遊戲開始】戰鬥開始，敵機開始出動！</color>");
+        }
+    }
+
+    public void SelectSkill(SkillType skill)
+    {
+        SelectedSkill = skill;
+        PlayerController player = FindAnyObjectByType<PlayerController>();
+        if (player != null)
+        {
+            player.ApplySkill(skill);
+        }
+        SetState(GameState.Playing);
+        Debug.Log($"<color=#00FF88>【技能啟用】已選擇技能：{skill}，正式進入第二關！</color>");
     }
 
     public void PauseGame()
@@ -163,11 +225,25 @@ public class GameManager : MonoBehaviour
         currentStage++;
         bossSpawned = false;
         bossDefeated = false;
-        bossSpawnThreshold += 6000; // 下一關分數門檻遞增
+        bossSpawnThreshold = currentScore + 18000; // 第二關流程加長，需要更多分數才觸發 Boss
+
+        // 清空上一關殘留的子彈、道具與敵機
+        foreach (var proj in FindObjectsByType<Projectile>())
+        {
+            Destroy(proj.gameObject);
+        }
+        foreach (var item in FindObjectsByType<ItemPickup>())
+        {
+            Destroy(item.gameObject);
+        }
+        foreach (var enemy in FindObjectsByType<EnemyController>())
+        {
+            Destroy(enemy.gameObject);
+        }
 
         OnStageChanged?.Invoke(currentStage);
-        SetState(GameState.Playing);
-        Debug.Log($"<color=#FFD700>【邁向下一關】進入 STAGE {currentStage}！</color>");
+        SetState(GameState.Story);
+        Debug.Log($"<color=#FFD700>【邁向下一關】進入 STAGE {currentStage}，播放戰前劇情！</color>");
     }
 
     /// <summary>
@@ -193,18 +269,35 @@ public class GameManager : MonoBehaviour
     {
         if (bossDefeated) return;
         bossDefeated = true;
+
+        // 通關後清空場上所有敵人子彈
+        foreach (var proj in FindObjectsByType<Projectile>())
+        {
+            if (proj != null && proj.BulletFaction == Projectile.Faction.Enemy)
+            {
+                Destroy(proj.gameObject);
+            }
+        }
+
         Debug.Log("<color=#FFD700>【關卡大捷】關卡首領已被消滅！獲得勝利 VICTORY！</color>");
         SetState(GameState.Victory);
     }
 
     /// <summary>
-    /// 玩家陣亡
+    /// 玩家陣亡 (先播放對應關卡與擊敗者的戰敗劇情，再進入 Game Over)
     /// </summary>
     public void TriggerGameOver()
     {
-        if (currentState == GameState.GameOver) return;
-        Debug.Log("<color=#FF0000>【任務失敗】戰機陣亡，GAME OVER！</color>");
-        SetState(GameState.GameOver);
+        TriggerGameOver(EnemyType.Minion);
+    }
+
+    public void TriggerGameOver(EnemyType attackerType)
+    {
+        if (currentState == GameState.GameOver || (currentState == GameState.Story && IsDefeatStory)) return;
+        LastAttackerType = attackerType;
+        IsDefeatStory = true;
+        Debug.Log($"<color=#FF0000>【任務失敗】玩家戰機被 {attackerType} 擊毀，播放戰敗劇情...</color>");
+        SetState(GameState.Story);
     }
 
     public void TriggerBomb()

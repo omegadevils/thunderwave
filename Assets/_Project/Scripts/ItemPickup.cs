@@ -40,6 +40,17 @@ public class ItemPickup : MonoBehaviour
 
     private void Update()
     {
+        bool isHorizontal = GameManager.Instance != null && GameManager.Instance.IsHorizontalStage;
+        if (isHorizontal)
+        {
+            transform.Translate(Vector3.left * (fallSpeed * Time.deltaTime), Space.World);
+            if (transform.position.x < bottomDestroyY)
+            {
+                Destroy(gameObject);
+            }
+            return;
+        }
+
         // 直線緩速向下飄落
         transform.Translate(Vector3.down * (fallSpeed * Time.deltaTime), Space.World);
 
@@ -52,6 +63,8 @@ public class ItemPickup : MonoBehaviour
 
     private void OnTriggerEnter2D(Collider2D other)
     {
+        if (GameManager.Instance != null && GameManager.Instance.CurrentState != GameState.Playing) return;
+
         PlayerController player = other.GetComponent<PlayerController>();
         if (player != null)
         {

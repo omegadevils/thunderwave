@@ -12,6 +12,10 @@ PrefabInstance:
       propertyPath: m_GravityScale
       value: 0
       objectReference: {fileID: 0}
+    - target: {fileID: 226074059524898080, guid: d9a90164c7ab9a24391adb3d078687a0, type: 3}
+      propertyPath: m_UseFullKinematicContacts
+      value: 1
+      objectReference: {fileID: 0}
     - target: {fileID: 1278404520174114382, guid: d9a90164c7ab9a24391adb3d078687a0, type: 3}
       propertyPath: m_LocalScale.x
       value: 7.2

@@ -120,6 +120,7 @@ public class PlayerController : MonoBehaviour
     public int SpreadLevel => spreadLevel;
     public int PlasmaLevel => plasmaLevel;
     public float ChargeProgress => Mathf.Clamp01(chargeTimer / chargeTimeRequired);
+    public float BombCooldownRemaining => Mathf.Max(0f, nextBombTime - Time.time);
     public bool IsChargeReady => chargeTimer >= chargeTimeRequired;
     public int BombCount => bombCount;
     public int CurrentHealth => currentHealth;
@@ -142,7 +143,7 @@ public class PlayerController : MonoBehaviour
         mainCamera = Camera.main;
         if (mainCamera == null)
         {
-            mainCamera = FindFirstObjectByType<Camera>();
+            mainCamera = FindAnyObjectByType<Camera>();
         }
     }
 
@@ -155,8 +156,17 @@ public class PlayerController : MonoBehaviour
 
     private void Update()
     {
+        if (GameManager.Instance != null && GameManager.Instance.CurrentState != GameState.Playing)
+        {
+            moveInput = Vector2.zero;
+            return;
+        }
+
         HandleInput();
+        HandleAutoChargeAndWingmen();
         HandleShootingAndCharging();
+        bool isHorizontal = GameManager.Instance != null && GameManager.Instance.IsHorizontalStage;
+        transform.rotation = isHorizontal ? Quaternion.Euler(0, 0, -90f) : Quaternion.identity;
         HandleBombInput();
         HandleInvulnerability();
         HandleDebugWeaponSwitch();
@@ -181,7 +191,7 @@ public class PlayerController : MonoBehaviour
         }
     }
 
-    private void DowngradeCurrentWeapon()
+    public void DowngradeCurrentWeapon()
     {
         switch (currentWeapon)
         {
@@ -191,8 +201,174 @@ public class PlayerController : MonoBehaviour
         }
     }
 
+    private void OnEnable()
+    {
+        GameManager.OnStageChanged += HandleStageChanged;
+    }
+
+    private void OnDisable()
+    {
+        GameManager.OnStageChanged -= HandleStageChanged;
+    }
+
+    private void HandleStageChanged(int stage)
+    {
+        UpdateCameraBounds();
+        if (stage >= 2)
+        {
+            ResetForNewStage();
+        }
+    }
+
+    /// <summary>
+    /// 進入新關卡時重置所有武器等級與玩家狀態 (HP、炸彈、蓄力、無敵)
+    /// </summary>
+    public void ResetForNewStage()
+    {
+        currentWeapon = WeaponType.Vulcan;
+        vulcanLevel = 1;
+        spreadLevel = 1;
+        plasmaLevel = 1;
+
+        currentHealth = maxHealth;
+        OnHealthChanged?.Invoke(currentHealth, maxHealth);
+
+        bombCount = 3;
+        nextBombTime = 0f;
+        chargeTimer = 0f;
+        isCharging = false;
+        isInvulnerable = false;
+        invulnerableTimer = 0f;
+        SetSpriteAlpha(1f);
+
+        Debug.Log("<color=#00CCFF>【狀態重置】已重置所有武器等級、HP 與炸彈次數，迎接新關卡！</color>");
+    }
+
+    /// <summary>
+    /// 套用第二關選擇的強化技能
+    /// </summary>
+    public void ApplySkill(SkillType skill)
+    {
+        activeSkill = skill;
+        damageMultiplier = 1;
+        autoChargeEnabled = false;
+        ClearWingmen();
+
+        switch (skill)
+        {
+            case SkillType.Wingmen:
+                SpawnWingmen();
+                break;
+            case SkillType.AutoCharge:
+                autoChargeEnabled = true;
+                break;
+            case SkillType.GlassCannon:
+                damageMultiplier = 3;
+                currentHealth = 1;
+                OnHealthChanged?.Invoke(currentHealth, maxHealth);
+                break;
+        }
+    }
+
+    private void ClearWingmen()
+    {
+        foreach (var w in wingmen)
+        {
+            if (w != null) Destroy(w);
+        }
+        wingmen.Clear();
+    }
+
+    private void SpawnWingmen()
+    {
+        Sprite playerSprite = null;
+        if (spriteRenderers != null && spriteRenderers.Length > 0 && spriteRenderers[0] != null)
+        {
+            playerSprite = spriteRenderers[0].sprite;
+        }
+
+        Vector3[] offsets = new Vector3[] { new Vector3(-0.65f, -0.15f, 0f), new Vector3(0.65f, -0.15f, 0f) };
+        for (int i = 0; i < offsets.Length; i++)
+        {
+            SpawnSingleWingman(offsets[i], i + 1);
+        }
+    }
+
+    private void SpawnSingleWingman(Vector3 localOffset, int index)
+    {
+        Sprite playerSprite = null;
+        if (spriteRenderers != null && spriteRenderers.Length > 0 && spriteRenderers[0] != null)
+        {
+            playerSprite = spriteRenderers[0].sprite;
+        }
+
+        GameObject w = new GameObject($"Wingman_{index}");
+        w.transform.SetParent(transform, false);
+        w.transform.localPosition = localOffset;
+        w.transform.localScale = Vector3.one * 0.45f;
+
+        SpriteRenderer sr = w.AddComponent<SpriteRenderer>();
+        sr.sprite = playerSprite;
+        sr.color = new Color(0.4f, 0.9f, 1f, 0.95f);
+        sr.sortingOrder = 19;
+
+        wingmen.Add(w);
+    }
+
+    private System.Collections.IEnumerator RestoreWingmanAfterDelay(float delay)
+    {
+        yield return new WaitForSeconds(delay);
+        if (activeSkill == SkillType.Wingmen && wingmen.Count < 2 && currentHealth > 0)
+        {
+            Vector3 offset = wingmen.Count == 0 ? new Vector3(-0.65f, -0.15f, 0f) : new Vector3(0.65f, -0.15f, 0f);
+            SpawnSingleWingman(offset, wingmen.Count + 1);
+            Debug.Log($"<color=#00FFCC>【輔助戰機恢復】已重新部署 1 台輔助戰機！目前：{wingmen.Count} 台</color>");
+        }
+    }
+
+    private void HandleAutoChargeAndWingmen()
+    {
+        if (autoChargeEnabled)
+        {
+            chargeTimer += Time.deltaTime;
+            if (chargeTimer >= chargeTimeRequired)
+            {
+                FireChargeLaser();
+                chargeTimer = 0f;
+            }
+        }
+
+        if (wingmen.Count > 0)
+        {
+            Vector3[] offsets = new Vector3[] { new Vector3(-0.65f, -0.15f, 0f), new Vector3(0.65f, -0.15f, 0f) };
+            for (int i = 0; i < wingmen.Count; i++)
+            {
+                GameObject w = wingmen[i];
+                if (w == null) continue;
+                w.transform.localPosition = offsets[Mathf.Min(i, offsets.Length - 1)];
+                Vector3 worldPos = w.transform.position;
+                worldPos.x = Mathf.Clamp(worldPos.x, minBounds.x, maxBounds.x);
+                worldPos.y = Mathf.Clamp(worldPos.y, minBounds.y, maxBounds.y);
+                w.transform.position = worldPos;
+            }
+        }
+
+        if (wingmen.Count > 0 && bulletPrefab != null && Time.time >= nextWingmanFireTime)
+        {
+            nextWingmanFireTime = Time.time + 0.6f;
+            foreach (var w in wingmen)
+            {
+                if (w != null)
+                {
+                    SpawnBullet(w.transform.position + transform.up * 0.4f, (Vector2)transform.up, 1, 12f, new Vector3(0.22f, 0.45f, 1f), Color.cyan);
+                }
+            }
+        }
+    }
+
     private void FixedUpdate()
     {
+        if (GameManager.Instance != null && GameManager.Instance.CurrentState != GameState.Playing) return;
         MovePlayer();
     }
 
@@ -229,7 +405,13 @@ public class PlayerController : MonoBehaviour
 
     private void SetSpriteAlpha(float alpha)
     {
-        if (spriteRenderers == null) return;
+        foreach (var sr in spriteRenderers)
+        {
+            if (sr != null)
+            {
+                sr.sortingOrder = 20;
+            }
+        }
         foreach (var sr in spriteRenderers)
         {
             if (sr != null)
@@ -241,14 +423,62 @@ public class PlayerController : MonoBehaviour
         }
     }
 
+    private EnemyType lastAttackerType = EnemyType.Minion;
+    private SkillType activeSkill = SkillType.None;
+    private int damageMultiplier = 1;
+    private bool autoChargeEnabled = false;
+    private readonly System.Collections.Generic.List<GameObject> wingmen = new System.Collections.Generic.List<GameObject>();
+    private float nextWingmanFireTime = 0f;
+    private float bombCooldown = 5.0f;
+    private float nextBombTime = 0f;
+    private float silenceEndTime = 0f;
+
+    public void SilenceShooting(float duration)
+    {
+        silenceEndTime = Mathf.Max(silenceEndTime, Time.time + duration);
+        Debug.Log($"<color=#FFCC00>【干擾陷阱】武器系統遭電磁干擾，無法射擊 {duration} 秒！</color>");
+    }
+
     /// <summary>
     /// 受到傷害 (扣除 HP 並觸發 1.5 秒無敵保護)
     /// </summary>
     public void TakeDamage(int damage)
     {
+        TakeDamage(damage, EnemyType.Minion);
+    }
+
+    public void TakeDamage(int damage, EnemyType attackerType)
+    {
+        // 若非遊玩中（例如已通關 Victory 或暫停/劇情），不受任何傷害
+        if (GameManager.Instance != null && GameManager.Instance.CurrentState != GameState.Playing) return;
+
         // 若處於無敵狀態，無視傷害
         if (isInvulnerable || currentHealth <= 0) return;
 
+        // 若有輔助戰機，優先由一台輔助戰機抵擋本次攻擊
+        if (wingmen.Count > 0)
+        {
+            GameObject lostWingman = wingmen[wingmen.Count - 1];
+            wingmen.RemoveAt(wingmen.Count - 1);
+            if (lostWingman != null) Destroy(lostWingman);
+
+            isInvulnerable = true;
+            invulnerableTimer = invulnerableDuration;
+            StartCoroutine(RestoreWingmanAfterDelay(10f));
+            Debug.Log($"<color=#00CCFF>【輔助戰機擋傷】失去 1 台輔助戰機，10 秒後將恢復！剩餘：{wingmen.Count} 台</color>");
+            return;
+        }
+
+        // 背水一戰：35% 機率極限閃避免疫攻擊
+        if (activeSkill == SkillType.GlassCannon && Random.value < 0.35f)
+        {
+            isInvulnerable = true;
+            invulnerableTimer = 0.8f;
+            Debug.Log("<color=#FFCC00>【背水一戰】觸發極限閃避，免疫本次攻擊！</color>");
+            return;
+        }
+
+        lastAttackerType = attackerType;
         currentHealth -= damage;
         currentHealth = Mathf.Max(0, currentHealth);
         OnHealthChanged?.Invoke(currentHealth, maxHealth);
@@ -284,7 +514,7 @@ public class PlayerController : MonoBehaviour
         OnPlayerDied?.Invoke();
         if (GameManager.Instance != null)
         {
-            GameManager.Instance.TriggerGameOver();
+            GameManager.Instance.TriggerGameOver(lastAttackerType);
         }
         gameObject.SetActive(false);
     }
@@ -356,6 +586,12 @@ public class PlayerController : MonoBehaviour
                 FireNormalBullet();
                 nextFireTime = Time.time + fireRate;
             }
+        }
+
+        if (shootKeyHeld && !isCharging)
+        {
+            isCharging = true;
+            chargeTimer = 0f;
         }
 
         if (shootKeyUp && isCharging)
@@ -459,7 +695,14 @@ public class PlayerController : MonoBehaviour
             return false;
         }
 
+        if (Time.time < nextBombTime)
+        {
+            Debug.Log($"<color=#FFAA00>【全屏炸彈】冷卻中，剩餘 {nextBombTime - Time.time:F1} 秒！</color>");
+            return false;
+        }
+
         bombCount--;
+        nextBombTime = Time.time + bombCooldown;
         Debug.Log($"<color=#FF0055>【全屏炸彈】按下 C 鍵！施放全畫面衝擊波！剩餘次數: {bombCount}/3</color>");
 
         // 產生衝擊波視覺效果 (若有)
@@ -482,9 +725,9 @@ public class PlayerController : MonoBehaviour
     /// </summary>
     private void FireNormalBullet()
     {
-        if (bulletPrefab == null) return;
+        if (bulletPrefab == null || Time.time < silenceEndTime) return;
 
-        Vector3 spawnPos = firePoint != null ? firePoint.position : transform.position + Vector3.up * 0.8f;
+        Vector3 spawnPos = firePoint != null ? firePoint.position : transform.position + transform.up * 0.8f;
 
         switch (currentWeapon)
         {
@@ -509,8 +752,8 @@ public class PlayerController : MonoBehaviour
         float startOffset = -(count - 1) * spacing * 0.5f;
         for (int i = 0; i < count; i++)
         {
-            Vector3 offsetPos = origin + Vector3.right * (startOffset + i * spacing);
-            SpawnBullet(offsetPos, Vector2.up, 1, 15f, new Vector3(0.3f, 0.6f, 1f), Color.red);
+            Vector3 offsetPos = origin + transform.right * (startOffset + i * spacing);
+            SpawnBullet(offsetPos, (Vector2)transform.up, 1, 15f, new Vector3(0.3f, 0.6f, 1f), Color.red);
         }
     }
 
@@ -542,7 +785,7 @@ public class PlayerController : MonoBehaviour
 
         foreach (float angle in angles)
         {
-            Vector2 dir = Quaternion.Euler(0, 0, angle) * Vector2.up;
+            Vector2 dir = Quaternion.Euler(0, 0, angle) * (Vector2)transform.up;
             SpawnBullet(origin, dir, 1, 13f, new Vector3(0.3f, 0.6f, 1f), Color.cyan);
         }
     }
@@ -578,7 +821,7 @@ public class PlayerController : MonoBehaviour
                 break;
         }
 
-        SpawnBullet(origin, Vector2.up, dmg, 10.5f, new Vector3(0.5f, 0.5f, 1f) * scaleMultiplier, new Color(0.2f, 1f, 0.3f));
+        SpawnBullet(origin, (Vector2)transform.up, dmg, 10.5f, new Vector3(0.5f, 0.5f, 1f) * scaleMultiplier, new Color(0.2f, 1f, 0.3f));
     }
 
     /// <summary>
@@ -598,7 +841,7 @@ public class PlayerController : MonoBehaviour
         Projectile proj = bullet.GetComponent<Projectile>();
         if (proj != null)
         {
-            proj.Initialize(Projectile.Faction.Player, dmg, speed, dir, false);
+            proj.Initialize(Projectile.Faction.Player, dmg * damageMultiplier, speed, dir, false);
         }
     }
 
@@ -607,12 +850,12 @@ public class PlayerController : MonoBehaviour
     /// </summary>
     private void FireChargeLaser()
     {
-        Vector3 spawnPos = firePoint != null ? firePoint.position : transform.position + Vector3.up * 1.2f;
+        Vector3 spawnPos = firePoint != null ? firePoint.position : transform.position + transform.up * 1.2f;
         GameObject laserObj = chargeLaserPrefab != null ? chargeLaserPrefab : bulletPrefab;
 
         if (laserObj != null)
         {
-            GameObject laser = Instantiate(laserObj, spawnPos, Quaternion.identity);
+            GameObject laser = Instantiate(laserObj, spawnPos, transform.rotation);
             laser.transform.localScale = new Vector3(2.2f, 4.5f, 1f); // 更加巨大震撼的蓄力雷射
 
             SpriteRenderer sr = laser.GetComponentInChildren<SpriteRenderer>();
@@ -624,7 +867,7 @@ public class PlayerController : MonoBehaviour
             Projectile proj = laser.GetComponent<Projectile>();
             if (proj != null)
             {
-                proj.Initialize(Projectile.Faction.Player, 10, 20f, Vector2.up, true);
+                proj.Initialize(Projectile.Faction.Player, 10 * damageMultiplier, 20f, (Vector2)transform.up, true);
             }
 
             Debug.Log("<color=#FFEE00>【蓄力攻擊】施放強力貫穿雷射！(傷害: 10, 貫穿)</color>");
@@ -674,10 +917,12 @@ public class PlayerController : MonoBehaviour
             }
         }
 
-        // 強制鎖定直式 9:16 (寬度 = 高度 * (9/16))，不管 Game View 是何種比例
+        // 直式鎖定 9:16，第二關橫式則符合太空背景圖片寬度
         float verticalHeight = mainCamera != null && mainCamera.orthographic ? mainCamera.orthographicSize : 6.5f;
-        float targetAspectRatio = 9f / 16f;
-        float horizontalWidth = verticalHeight * targetAspectRatio;
+        bool isHorizontal = GameManager.Instance != null && GameManager.Instance.IsHorizontalStage;
+        float horizontalWidth = (isHorizontal && BackgroundScroller.Instance != null)
+            ? BackgroundScroller.Instance.GetBackgroundHalfWidth()
+            : verticalHeight * (9f / 16f);
         Vector3 camPos = mainCamera != null ? mainCamera.transform.position : Vector3.zero;
 
         minBounds = new Vector2(camPos.x - horizontalWidth + bodyExtent.x, camPos.y - verticalHeight + bodyExtent.y);
